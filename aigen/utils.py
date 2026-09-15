@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import torch
+from PIL import Image
 
 
 def get_device() -> str:
@@ -76,6 +77,24 @@ def make_generator(seed: int | None, device: str) -> tuple[torch.Generator, int]
     generator_device = device if device == "cuda" else "cpu"
     generator = torch.Generator(device=generator_device).manual_seed(seed)
     return generator, seed
+
+
+def resize_to_valid_dimensions(
+    image: Image.Image, max_size: int = 1024, multiple: int = 8
+) -> Image.Image:
+    """img2img/VAEが要求する8の倍数のサイズに、アスペクト比を保ったままリサイズする。
+
+    スマートフォン等で撮影した画像はサイズが8の倍数でないことが多く、
+    そのままパイプラインに渡すとVAEの形状不一致エラーになるため、
+    アップロード画像は生成前に必ずこの関数を通す。
+    """
+    width, height = image.size
+    scale = min(1.0, max_size / max(width, height))
+    new_width = max(multiple, round(width * scale / multiple) * multiple)
+    new_height = max(multiple, round(height * scale / multiple) * multiple)
+    if (new_width, new_height) == (width, height):
+        return image
+    return image.resize((new_width, new_height), Image.LANCZOS)
 
 
 def ensure_output_dir(path: str) -> Path:

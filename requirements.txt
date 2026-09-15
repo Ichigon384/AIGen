@@ -14,5 +14,8 @@ Pillow>=10.0.0
 imageio>=2.34.0
 imageio-ffmpeg>=0.4.9
 
+# オブジェクト生成タブの背景透過処理に使用 (CPU上のonnxruntimeで動作し、GPU種別を問わず利用可能)
+rembg>=2.0.50
+
 # 任意: VRAM節約・高速化 (NVIDIA GPU環境のみ。Macでは不要/非対応)
 # xformers

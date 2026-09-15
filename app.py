@@ -1,4 +1,5 @@
-"""AIGen: ローカルで動くAI画像・動画生成ツール (T2I / 画像スタイル変換 / I2V)。
+"""AIGen: ローカルで動くAI画像・動画生成ツール
+(T2I / オブジェクト生成 / 画像スタイル変換 / I2V)。
 
 起動方法:
     python app.py
@@ -16,6 +17,12 @@ import gradio as gr
 
 from aigen.config import I2V_MODEL_CHOICES, STYLE_MODEL_CHOICES, T2I_MODEL_CHOICES
 from aigen.i2v import ImageToVideoGenerator
+from aigen.object_gen import (
+    OBJECT_NEGATIVE_DEFAULT,
+    OBJECT_STYLE_PRESETS,
+    build_object_prompt,
+    remove_background,
+)
 from aigen.style_transfer import STYLE_PRESETS, StyleTransferGenerator
 from aigen.t2i import TextToImageGenerator
 from aigen.utils import get_device
@@ -67,6 +74,51 @@ def run_t2i(
         int(seed),
     )
     return image, f"使用シード値: {used_seed}"
+
+
+def run_object_gen(
+    model_name: str,
+    subject_prompt: str,
+    style_preset: str,
+    extra_prompt: str,
+    negative_prompt: str,
+    transparent_bg: bool,
+    steps: float,
+    guidance_scale: float,
+    width: float,
+    height: float,
+    seed: float,
+    low_vram: bool,
+):
+    if not subject_prompt or not subject_prompt.strip():
+        raise gr.Error("生成したいオブジェクトの説明を入力してください。")
+
+    # オブジェクト生成はT2Iと同じ画像生成パイプラインを流用する
+    t2i_generator.low_vram = low_vram
+    _unload_others(keep="t2i")
+
+    model_id = T2I_MODEL_CHOICES[model_name]
+    prompt = build_object_prompt(subject_prompt, style_preset, extra_prompt)
+    image, used_seed = t2i_generator.generate(
+        model_id,
+        prompt,
+        negative_prompt,
+        int(steps),
+        float(guidance_scale),
+        int(width),
+        int(height),
+        int(seed),
+    )
+
+    log = f"使用シード値: {used_seed}"
+    if transparent_bg:
+        try:
+            image = remove_background(image)
+            log += " / 背景透過: 完了"
+        except RuntimeError as exc:
+            raise gr.Error(str(exc)) from exc
+
+    return image, log
 
 
 def run_style_transfer(
@@ -146,8 +198,9 @@ _DEVICE_LABELS = {
 with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as demo:
     gr.Markdown(
         "# AIGen\n"
-        "テキストから画像生成 (T2I) / 画像のスタイル変換 (アニメ風など) / "
-        "画像から動画生成 (I2V) をローカル環境で実行します。\n\n"
+        "テキストから画像生成 (T2I) / 動画編集素材向けオブジェクト生成 / "
+        "画像のスタイル変換 (アニメ風など) / 画像から動画生成 (I2V) を"
+        "ローカル環境で実行します。\n\n"
         f"検出デバイス: **{_DEVICE_LABELS.get(get_device(), get_device())}**"
     )
 
@@ -201,6 +254,65 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                     low_vram_checkbox,
                 ],
                 outputs=[t2i_output, t2i_log],
+            )
+
+        with gr.Tab("オブジェクト生成 (動画編集素材向け)"):
+            gr.Markdown(
+                "背景のない単一のオブジェクト・キャラクター画像を生成します。"
+                "動画編集ソフトに素材として読み込むことを想定し、アニメ風・ベクター風のスタイルと"
+                "背景透過（PNG/アルファチャンネル）に対応しています。"
+            )
+            with gr.Row():
+                with gr.Column():
+                    obj_model = gr.Dropdown(
+                        list(T2I_MODEL_CHOICES.keys()),
+                        value=list(T2I_MODEL_CHOICES.keys())[0],
+                        label="モデル",
+                    )
+                    obj_subject_prompt = gr.Textbox(
+                        label="生成したいオブジェクト",
+                        lines=2,
+                        placeholder="例: a red apple / a robot cat / a treasure chest",
+                    )
+                    obj_style_preset = gr.Dropdown(
+                        list(OBJECT_STYLE_PRESETS.keys()), value="アニメ風", label="スタイルプリセット"
+                    )
+                    obj_extra_prompt = gr.Textbox(label="追加プロンプト（任意）", lines=2)
+                    obj_negative = gr.Textbox(
+                        label="ネガティブプロンプト",
+                        lines=2,
+                        value=OBJECT_NEGATIVE_DEFAULT,
+                    )
+                    obj_transparent = gr.Checkbox(value=True, label="背景を透過する (PNG/アルファチャンネル)")
+                    with gr.Row():
+                        obj_width = gr.Slider(256, 1536, value=1024, step=64, label="幅")
+                        obj_height = gr.Slider(256, 1536, value=1024, step=64, label="高さ")
+                    with gr.Row():
+                        obj_steps = gr.Slider(1, 100, value=30, step=1, label="ステップ数")
+                        obj_cfg = gr.Slider(1.0, 20.0, value=7.0, step=0.5, label="CFGスケール")
+                    obj_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
+                    obj_button = gr.Button("生成", variant="primary")
+                with gr.Column():
+                    obj_output = gr.Image(label="生成結果", image_mode="RGBA")
+                    obj_log = gr.Textbox(label="ログ", interactive=False)
+
+            obj_button.click(
+                run_object_gen,
+                inputs=[
+                    obj_model,
+                    obj_subject_prompt,
+                    obj_style_preset,
+                    obj_extra_prompt,
+                    obj_negative,
+                    obj_transparent,
+                    obj_steps,
+                    obj_cfg,
+                    obj_width,
+                    obj_height,
+                    obj_seed,
+                    low_vram_checkbox,
+                ],
+                outputs=[obj_output, obj_log],
             )
 
         with gr.Tab("画像スタイル変換"):

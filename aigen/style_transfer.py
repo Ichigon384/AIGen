@@ -10,6 +10,7 @@ from .utils import (
     get_torch_dtype,
     make_generator,
     optimize_pipeline,
+    resize_to_valid_dimensions,
 )
 
 # スタイルプリセット: プリセット名 -> プロンプトに追加する英語の説明
@@ -83,7 +84,11 @@ class StyleTransferGenerator:
         if not prompt:
             prompt = "high quality, masterpiece"
 
-        source_image = image.convert("RGB")
+        # アップロード画像はサイズが8の倍数でないことが多く、そのまま渡すと
+        # VAEで形状不一致エラーになるため、生成前に必ずリサイズする。
+        # SDXL系は1024付近、SD1.5系は768付近を上限にして品質と負荷のバランスを取る。
+        max_size = 1024 if "xl" in model_id.lower() else 768
+        source_image = resize_to_valid_dimensions(image.convert("RGB"), max_size=max_size)
 
         result = self.pipe(
             prompt=prompt,
