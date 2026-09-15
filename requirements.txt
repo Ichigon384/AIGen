@@ -14,6 +14,9 @@ Pillow>=10.0.0
 imageio>=2.34.0
 imageio-ffmpeg>=0.4.9
 
+# iPhone等で撮影されたHEIC/HEIF画像をアップロードできるようにするために使用
+pillow-heif>=0.15.0
+
 # オブジェクト生成タブの背景透過処理に使用 (CPU上のonnxruntimeで動作し、GPU種別を問わず利用可能)
 rembg>=2.0.50
 

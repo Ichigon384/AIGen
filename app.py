@@ -13,6 +13,13 @@ import os
 # 有効化する。torch/diffusersをインポートする前に設定する必要がある。
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
+import pillow_heif
+
+# iPhone等で撮影されたHEIC/HEIF画像をPillow(PIL.Image.open)で直接開けるようにする。
+# GradioのImageコンポーネントは内部でPIL.Image.openを使うため、これを登録しないと
+# HEICファイルのアップロード時に UnidentifiedImageError になる。
+pillow_heif.register_heif_opener()
+
 import gradio as gr
 
 from aigen.config import I2V_MODEL_CHOICES, STYLE_MODEL_CHOICES, T2I_MODEL_CHOICES
