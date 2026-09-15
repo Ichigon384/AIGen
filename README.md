@@ -12,12 +12,22 @@ APIキーは不要・生成コストもかかりません（電気代とダウ�
 
 ## 必要環境
 
+本ツールは以下のいずれかの環境で動作します。
+
+- **Windows/Linux + NVIDIA GPU（VRAM 8GB以上を推奨）+ CUDA**（推奨・最速）
+- **Mac（Apple Silicon: M1/M2/M3/M4、統合メモリ16GB以上を推奨）**
+  - PyTorchのMPS（Metal）バックエンドを自動的に使用します。Intel Macは非対応です。
+  - NVIDIA GPUよりは低速で、対応していない演算はCPUに自動フォールバックします。
+  - SDXLやStable Video Diffusionは重いため、統合メモリ8GBのMacでは軽量モデル（SD1.5系）や低解像度設定を推奨します。
+- **CPUのみ**（GPUなしでも動作しますが、画像1枚で数分〜数十分、動画はさらに長時間かかります）
+
+共通の要件:
+
 - Python 3.10 以上
-- **NVIDIA GPU（VRAM 8GB以上を推奨）+ CUDA**
-  - VRAMが少ない場合は「省VRAMモード」をONにし、画像サイズやフレーム数を小さくすることで動作させられる場合があります。
-  - GPUがない場合でも動作はしますが、CPUのみでの生成は非常に時間がかかります（画像1枚で数分〜数十分、動画はさらに長時間）。
 - ディスク空き容量 **20GB以上**（モデルを複数ダウンロードするため）
 - インターネット接続（初回のモデルダウンロード時のみ必要。以降はローカルキャッシュから読み込みます）
+
+VRAM/メモリが少ない場合は「省メモリモード」をONにし、画像サイズやフレーム数を小さくすることで動作させられる場合があります。
 
 ## セットアップ
 
@@ -29,15 +39,16 @@ cd AIGen
 python -m venv .venv
 source .venv/bin/activate  # Windowsの場合: .venv\Scripts\activate
 
-# 3. PyTorchをCUDA対応版でインストール（環境に合わせてURLを変更してください）
+# 3. (Windows/Linux + NVIDIA GPUの場合のみ) CUDA対応版PyTorchを先にインストール
 #    お使いのGPU/CUDAバージョンは https://pytorch.org/get-started/locally/ で確認できます
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+#    例 (CUDA 12.1): pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 # 4. 残りの依存関係をインストール
 pip install -r requirements.txt
 ```
 
-GPUがない、またはCPUのみで試す場合は手順3をスキップし、`pip install torch` のみでも動作します（低速）。
+- **Mac（Apple Silicon）**: 手順3は不要です。手順4の `pip install -r requirements.txt` で入る通常版のtorchが、そのままMPSバックエンドに対応しています（macOS 12.3以降が必要）。
+- **GPUなし/CPUのみ**: 同様に手順3は不要です（動作は低速です）。
 
 ## 起動方法
 
@@ -68,7 +79,7 @@ python app.py
 2. フレーム数・FPS・モーション量などを調整
 3. 「動画生成」ボタンをクリック（他の機能より時間がかかります）
 
-VRAMが不足する場合は、解像度・フレーム数・「デコードチャンクサイズ」を小さくしてください。
+VRAM/メモリが不足する場合は、解像度・フレーム数・「デコードチャンクサイズ」を小さくしてください。
 
 ## モデルについて
 
@@ -84,18 +95,25 @@ VRAMが不足する場合は、解像度・フレーム数・「デコードチ�
 いずれのモデルも各配布元のライセンス（多くはOpenRAIL系やCreativeML系）に従います。
 生成物を商用利用・再配布する場合は、利用前に各モデルページのライセンスを必ずご確認ください。
 
-## VRAM節約のヒント
+## VRAM/メモリ節約のヒント
 
-- 画面上部の「省VRAMモード」をON（既定でON）にすると、使用していないモデル部分をCPUに退避し、VRAM使用量を抑えます（速度は低下）。
-- 各機能を切り替えると、直前に使用していたモデルは自動的にアンロードされます（同時に複数モデルをVRAMに載せません）。
-- T2I/スタイル変換は解像度を下げる（例: 768x768）、I2Vはフレーム数・解像度・デコードチャンクサイズを下げると省VRAMになります。
-- それでも `CUDA out of memory` が出る場合は、軽量モデル（SD1.5系）に切り替えてください。
+- 画面上部の「省メモリモード」をON（既定でON）にすると、NVIDIA GPU環境では使用していないモデル部分をCPUに退避してVRAM使用量を抑えます（速度は低下）。Mac(MPS)/CPU環境ではこのオフロードは行われませんが、attention/vae slicingは常時有効です。
+- 各機能を切り替えると、直前に使用していたモデルは自動的にアンロードされます（同時に複数モデルをGPU/統合メモリに載せません）。
+- T2I/スタイル変換は解像度を下げる（例: 768x768）、I2Vはフレーム数・解像度・デコードチャンクサイズを下げるとメモリ使用量が減ります。
+- それでも `CUDA out of memory` / `MPS backend out of memory` が出る場合は、軽量モデル（SD1.5系）に切り替えてください。
+
+## Macでの注意点
+
+- SDXLやStable Video Diffusionは統合メモリを多く消費します。16GB以上のMacを推奨し、8GBのMacでは軽量モデル（SD1.5系のT2I・Waifu Diffusion）や低解像度（例: 512x512、I2Vは256x256〜384x384）から試してください。
+- 初回起動時に自動的に `PYTORCH_ENABLE_MPS_FALLBACK=1` が設定され、MPSで未対応の演算はCPUに自動フォールバックします（該当箇所は多少遅くなりますが、エラーにはなりません）。
+- NVIDIA GPUに比べて生成速度は遅く、特にI2V（動画生成）は数分以上かかることがあります。
 
 ## トラブルシューティング
 
-- **`torch.cuda.is_available()` が False / CPUで動いてしまう**: CUDA対応のPyTorchが入っていない可能性があります。手順3を確認してください。
+- **GPU/MPSが使われずCPUで動いてしまう**: NVIDIA GPU環境ではCUDA対応のPyTorchが入っていない可能性があります（手順3を確認）。Macの場合はmacOS 12.3以降・Apple Siliconであることを確認してください（Intel Macは非対応）。
 - **モデルダウンロードが失敗する**: 一部モデルはHugging Faceの利用規約への同意が必要な場合があります。ブラウザでモデルページ（例: `https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt`）を開いて同意した上で、`huggingface-cli login` でログインしてから再実行してください。
 - **動画生成でエラーになる**: `imageio-ffmpeg` が正しくインストールされているか確認してください（`pip install -r requirements.txt` で導入済みのはずです）。
+- **Macで画像が真っ黒になる**: 稀にMPSのfloat16関連の不具合で発生することがあります。本ツールはMac/CPUでは既定でfloat32を使用しているため通常は問題ありませんが、発生する場合はPyTorchを最新版に更新してください。
 
 ## ディレクトリ構成
 

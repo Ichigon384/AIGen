@@ -1,5 +1,7 @@
-# PyTorch: CUDA対応版は環境に合わせて別途インストールすることを推奨します。
-# 例 (CUDA 12.1): pip install torch --index-url https://download.pytorch.org/whl/cu121
+# PyTorch:
+# - Windows/Linux + NVIDIA GPU: CUDA対応版を別途インストールすることを推奨します。
+#   例 (CUDA 12.1): pip install torch --index-url https://download.pytorch.org/whl/cu121
+# - Mac (Apple Silicon): 通常の `pip install torch` でMPSバックエンドが使えます（追加設定不要）。
 # 詳細はREADME.mdのセットアップ手順を参照してください。
 torch>=2.1.0
 
@@ -12,5 +14,5 @@ Pillow>=10.0.0
 imageio>=2.34.0
 imageio-ffmpeg>=0.4.9
 
-# 任意: VRAM節約・高速化 (対応GPU/環境のみ)
+# 任意: VRAM節約・高速化 (NVIDIA GPU環境のみ。Macでは不要/非対応)
 # xformers

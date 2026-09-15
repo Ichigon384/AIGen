@@ -6,6 +6,12 @@
 
 from __future__ import annotations
 
+import os
+
+# Mac (MPS) では一部の演算が未実装のことがあるため、CPUへの自動フォールバックを
+# 有効化する。torch/diffusersをインポートする前に設定する必要がある。
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import gradio as gr
 
 from aigen.config import I2V_MODEL_CHOICES, STYLE_MODEL_CHOICES, T2I_MODEL_CHOICES
@@ -131,17 +137,23 @@ def run_i2v(
     return video_path, f"使用シード値: {used_seed}"
 
 
+_DEVICE_LABELS = {
+    "cuda": "cuda (NVIDIA GPU)",
+    "mps": "mps (Apple Silicon)",
+    "cpu": "cpu (GPUなし・低速)",
+}
+
 with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as demo:
     gr.Markdown(
         "# AIGen\n"
         "テキストから画像生成 (T2I) / 画像のスタイル変換 (アニメ風など) / "
         "画像から動画生成 (I2V) をローカル環境で実行します。\n\n"
-        f"検出デバイス: **{get_device()}**"
+        f"検出デバイス: **{_DEVICE_LABELS.get(get_device(), get_device())}**"
     )
 
     low_vram_checkbox = gr.Checkbox(
         value=LOW_VRAM_DEFAULT,
-        label="省VRAMモード (VRAMが少ない場合はONを推奨。生成速度は低下します)",
+        label="省メモリモード (VRAM/統合メモリが少ない場合はONを推奨。生成速度は低下します)",
     )
 
     with gr.Tabs():
@@ -285,7 +297,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
     gr.Markdown(
         "---\n"
         "初回生成時は各モデルのダウンロード（数GB）が行われるため時間がかかります。\n"
-        "VRAM不足エラー (CUDA out of memory) が出る場合は「省VRAMモード」をON、"
+        "メモリ不足エラー (CUDA/MPS out of memory) が出る場合は「省メモリモード」をON、"
         "画像サイズ・フレーム数・デコードチャンクサイズを小さくしてください。"
     )
 

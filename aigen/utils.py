@@ -10,36 +10,52 @@ import torch
 
 
 def get_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        # Apple Silicon (M1/M2/M3/M4) Mac
+        return "mps"
+    return "cpu"
 
 
 def get_torch_dtype(device: str) -> torch.dtype:
+    # MPS はfloat16で真っ黒な画像が出るなど不安定な場合があるため、
+    # CUDA以外は速度より安定性を優先してfloat32を使う。
     return torch.float16 if device == "cuda" else torch.float32
 
 
 def optimize_pipeline(pipe, low_vram: bool = True):
-    """VRAM使用量を抑えるための最適化をパイプラインに適用する。"""
+    """VRAM/メモリ使用量を抑えるための最適化をパイプラインに適用する。"""
     device = get_device()
-    if device != "cuda":
-        pipe.to(device)
+
+    if device == "cuda":
+        pipe.enable_attention_slicing()
+        try:
+            pipe.enable_vae_slicing()
+        except AttributeError:
+            pass
+
+        if low_vram:
+            # GPU/CPU間でモジュールを自動的にオフロードし、VRAMを節約する
+            pipe.enable_model_cpu_offload()
+        else:
+            pipe.to(device)
+
+        try:
+            pipe.enable_xformers_memory_efficient_attention()
+        except Exception:
+            # xformers未インストール、または非対応環境の場合は無視する
+            pass
+
         return pipe
 
+    # MPS (Mac) / CPU: model_cpu_offloadとxformersはCUDA専用のため使わない。
+    # 統合メモリの消費を抑えるため、attention/vae slicingは常に有効化する。
+    pipe.to(device)
     pipe.enable_attention_slicing()
     try:
         pipe.enable_vae_slicing()
     except AttributeError:
-        pass
-
-    if low_vram:
-        # GPU/CPU間でモジュールを自動的にオフロードし、VRAMを節約する
-        pipe.enable_model_cpu_offload()
-    else:
-        pipe.to(device)
-
-    try:
-        pipe.enable_xformers_memory_efficient_attention()
-    except Exception:
-        # xformers未インストール、または非対応環境の場合は無視する
         pass
 
     return pipe
@@ -49,6 +65,8 @@ def free_memory() -> None:
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
 
 
 def make_generator(seed: int | None, device: str) -> tuple[torch.Generator, int]:
