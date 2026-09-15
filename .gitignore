@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# 生成物
+outputs/*
+!outputs/.gitkeep
+
+# モデルキャッシュ (Hugging Faceが自動生成)
+models_cache/
+.cache/
+
+# エディタ/OS
+.vscode/
+.idea/
+.DS_Store

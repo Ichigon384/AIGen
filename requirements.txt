@@ -1,0 +1,16 @@
+# PyTorch: CUDA対応版は環境に合わせて別途インストールすることを推奨します。
+# 例 (CUDA 12.1): pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 詳細はREADME.mdのセットアップ手順を参照してください。
+torch>=2.1.0
+
+diffusers>=0.27.0
+transformers>=4.38.0
+accelerate>=0.27.0
+safetensors>=0.4.2
+gradio>=4.19.0
+Pillow>=10.0.0
+imageio>=2.34.0
+imageio-ffmpeg>=0.4.9
+
+# 任意: VRAM節約・高速化 (対応GPU/環境のみ)
+# xformers
