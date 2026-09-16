@@ -18,6 +18,10 @@ STYLE_PRESETS: dict[str, str] = {
     "アニメ風": "anime style, cel shading, vibrant colors, clean line art, masterpiece, best quality",
     "水彩画風": "watercolor painting, soft brush strokes, pastel colors, paper texture",
     "油絵風": "oil painting, thick brush strokes, canvas texture, rich colors, impressionist style",
+    "クレパス風": (
+        "oil pastel drawing, crayon art, thick waxy strokes, visible pastel texture, "
+        "vivid saturated colors, childlike hand-drawn style, textured paper"
+    ),
     "サイバーパンク風": "cyberpunk style, neon lights, futuristic city, high contrast, cinematic lighting",
     "ピクセルアート風": "pixel art, 8-bit style, retro game graphics, limited color palette",
     "カスタム（追加プロンプトのみ使用）": "",
