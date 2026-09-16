@@ -23,6 +23,7 @@ pillow_heif.register_heif_opener()
 import gradio as gr
 
 from aigen.config import I2V_MODEL_CHOICES, STYLE_MODEL_CHOICES, T2I_MODEL_CHOICES
+from aigen.history import load_history, record_existing_output, save_image_output
 from aigen.i2v import ImageToVideoGenerator
 from aigen.object_gen import (
     OBJECT_NEGATIVE_DEFAULT,
@@ -86,6 +87,22 @@ def run_t2i(
         int(seed),
     )
 
+    save_image_output(
+        OUTPUT_DIR,
+        kind="t2i",
+        kind_label="T2I",
+        image=image,
+        metadata={
+            "model": model_name,
+            "prompt": prompt.strip(),
+            "translated_prompt": translated_prompt,
+            "negative_prompt": translated_negative,
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
+            "seed": used_seed,
+        },
+    )
+
     log = f"使用シード値: {used_seed}"
     if translated_prompt != prompt.strip():
         log += f"\n翻訳後プロンプト: {translated_prompt}"
@@ -141,6 +158,24 @@ def run_object_gen(
         except RuntimeError as exc:
             raise gr.Error(str(exc)) from exc
 
+    save_image_output(
+        OUTPUT_DIR,
+        kind="object",
+        kind_label="オブジェクト生成",
+        image=image,
+        metadata={
+            "model": model_name,
+            "subject_prompt": subject_prompt.strip(),
+            "prompt": prompt,
+            "style_preset": style_preset,
+            "negative_prompt": translated_negative,
+            "transparent_bg": transparent_bg,
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
+            "seed": used_seed,
+        },
+    )
+
     return image, log
 
 
@@ -177,6 +212,24 @@ def run_style_transfer(
         int(steps),
         float(guidance_scale),
         int(seed),
+    )
+
+    save_image_output(
+        OUTPUT_DIR,
+        kind="style",
+        kind_label="画像スタイル変換",
+        image=result,
+        metadata={
+            "model": model_name,
+            "style_preset": style_preset,
+            "extra_prompt": extra_prompt.strip(),
+            "translated_extra_prompt": translated_extra,
+            "negative_prompt": translated_negative,
+            "strength": float(strength),
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
+            "seed": used_seed,
+        },
     )
 
     log = f"使用シード値: {used_seed}"
@@ -217,7 +270,99 @@ def run_i2v(
         int(height),
         int(seed),
     )
+
+    record_existing_output(
+        OUTPUT_DIR,
+        kind="i2v",
+        kind_label="I2V(動画)",
+        output_path=video_path,
+        metadata={
+            "model": model_name,
+            "num_frames": int(num_frames),
+            "fps": int(fps),
+            "motion_bucket_id": int(motion_bucket_id),
+            "noise_aug_strength": float(noise_aug_strength),
+            "seed": used_seed,
+        },
+    )
+
     return video_path, f"使用シード値: {used_seed}"
+
+
+def _history_caption(record: dict) -> str:
+    seed = record.get("seed", "?")
+    prompt = (
+        record.get("translated_prompt")
+        or record.get("prompt")
+        or record.get("subject_prompt")
+        or record.get("translated_extra_prompt")
+        or record.get("extra_prompt")
+        or ""
+    )
+    if len(prompt) > 40:
+        prompt = prompt[:40] + "…"
+    return f"[{record.get('kind_label', '')}] seed={seed} {prompt}"
+
+
+def _history_detail(record: dict) -> str:
+    lines = [
+        f"種類: {record.get('kind_label', '')}",
+        f"日時: {record.get('timestamp', '')}",
+    ]
+    if record.get("model"):
+        lines.append(f"モデル: {record['model']}")
+    if record.get("subject_prompt"):
+        lines.append(f"被写体: {record['subject_prompt']}")
+    if record.get("prompt"):
+        lines.append(f"プロンプト: {record['prompt']}")
+    if record.get("translated_prompt") and record["translated_prompt"] != record.get("prompt"):
+        lines.append(f"翻訳後プロンプト: {record['translated_prompt']}")
+    if record.get("style_preset"):
+        lines.append(f"スタイルプリセット: {record['style_preset']}")
+    if record.get("extra_prompt"):
+        lines.append(f"追加プロンプト: {record['extra_prompt']}")
+    if record.get("translated_extra_prompt") and record["translated_extra_prompt"] != record.get("extra_prompt"):
+        lines.append(f"翻訳後の追加プロンプト: {record['translated_extra_prompt']}")
+    if record.get("negative_prompt"):
+        lines.append(f"ネガティブプロンプト: {record['negative_prompt']}")
+    if "strength" in record:
+        lines.append(f"変換強度: {record['strength']}")
+    if "seed" in record:
+        lines.append(f"シード値: {record['seed']}")
+    if record.get("steps"):
+        lines.append(f"ステップ数: {record['steps']}")
+    if record.get("guidance_scale"):
+        lines.append(f"CFGスケール: {record['guidance_scale']}")
+    if "transparent_bg" in record:
+        lines.append(f"背景透過: {'あり' if record['transparent_bg'] else 'なし'}")
+    lines.append(f"保存先: {record.get('path', '')}")
+    return "\n".join(lines)
+
+
+def refresh_history():
+    records = load_history(OUTPUT_DIR)
+    image_records = [r for r in records if r.get("kind") in ("t2i", "object", "style")]
+    video_records = [r for r in records if r.get("kind") == "i2v"]
+
+    gallery_value = [(r["path"], _history_caption(r)) for r in image_records]
+
+    if video_records:
+        video_text = "\n\n".join(
+            f"[{r.get('timestamp', '')}] seed={r.get('seed', '?')}\n"
+            f"  プロンプト: {(r.get('translated_prompt') or r.get('prompt') or '(なし)')[:80]}\n"
+            f"  保存先: {r.get('path', '')}"
+            for r in video_records
+        )
+    else:
+        video_text = "(まだI2Vの生成履歴はありません)"
+
+    return gallery_value, image_records, video_text
+
+
+def on_history_select(evt: gr.SelectData, image_records: list[dict]):
+    if not image_records or evt.index is None or evt.index >= len(image_records):
+        return ""
+    return _history_detail(image_records[evt.index])
 
 
 _DEVICE_LABELS = {
@@ -437,6 +582,34 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                 ],
                 outputs=[i2v_output, i2v_log],
             )
+
+        with gr.Tab("生成履歴"):
+            gr.Markdown(
+                "T2I・オブジェクト生成・画像スタイル変換の生成結果を新しい順に表示します。"
+                "サムネイルをクリックすると、使用したプロンプトやシード値などの詳細が下に表示されます。"
+                "I2V（動画）の履歴は下部に一覧表示されます。"
+                "生成物はすべて `outputs/` フォルダに保存されており、アプリを再起動しても消えません。"
+            )
+            history_refresh_button = gr.Button("更新")
+            history_gallery = gr.Gallery(label="画像生成履歴", columns=4, height="auto")
+            history_detail = gr.Textbox(label="詳細（サムネイルをクリック）", lines=8, interactive=False)
+            history_state = gr.State([])
+            history_video_text = gr.Textbox(label="I2V(動画)生成履歴", lines=8, interactive=False)
+
+            history_refresh_button.click(
+                refresh_history,
+                outputs=[history_gallery, history_state, history_video_text],
+            )
+            history_gallery.select(
+                on_history_select,
+                inputs=[history_state],
+                outputs=[history_detail],
+            )
+
+    demo.load(
+        refresh_history,
+        outputs=[history_gallery, history_state, history_video_text],
+    )
 
     gr.Markdown(
         "---\n"
