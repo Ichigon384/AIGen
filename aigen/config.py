@@ -14,14 +14,18 @@ class AppConfig:
 DEFAULT_CONFIG = AppConfig()
 
 # テキストから画像生成 (T2I) で選べるモデル
+# 注: runwayml/stable-diffusion-v1-5 はRunway社によりHugging Face上から削除されたため、
+# コミュニティが管理する後継の公式ミラー組織を使用する。
 T2I_MODEL_CHOICES: dict[str, str] = {
     "SDXL Base 1.0 (高品質・標準、VRAM目安8GB+)": "stabilityai/stable-diffusion-xl-base-1.0",
-    "Stable Diffusion 1.5 (軽量・高速、VRAM目安4GB+)": "runwayml/stable-diffusion-v1-5",
+    "Stable Diffusion 1.5 (軽量・高速、VRAM目安4GB+)": "stable-diffusion-v1-5/stable-diffusion-v1-5",
 }
 
 # 画像スタイル変換 (img2img) で選べるモデル
+# 注: Animagine XL 3.1は開発が Linaqruf 個人アカウントから cagliostrolab
+# 組織アカウントに移管されており、正しいリポジトリIDは cagliostrolab/animagine-xl-3.1。
 STYLE_MODEL_CHOICES: dict[str, str] = {
-    "Animagine XL 3.1 (アニメ風・SDXLベース)": "Linaqruf/animagine-xl-3.1",
+    "Animagine XL 3.1 (アニメ風・SDXLベース)": "cagliostrolab/animagine-xl-3.1",
     "Waifu Diffusion 1.5 (アニメ風・SD1.5ベース、軽量)": "hakurei/waifu-diffusion",
 }
 
