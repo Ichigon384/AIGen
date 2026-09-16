@@ -21,5 +21,8 @@ pillow-heif>=0.15.0
 # 新しいバージョンのrembgはonnxruntimeを同梱しないため、[cpu]エクストラを明示的に指定する
 rembg[cpu]>=2.0.50
 
+# 日本語プロンプトの自動英訳 (Helsinki-NLP/opus-mt-ja-en) のトークナイザに必要
+sentencepiece>=0.2.0
+
 # 任意: VRAM節約・高速化 (NVIDIA GPU環境のみ。Macでは不要/非対応)
 # xformers

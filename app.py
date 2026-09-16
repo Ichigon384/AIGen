@@ -32,6 +32,7 @@ from aigen.object_gen import (
 )
 from aigen.style_transfer import STYLE_PRESETS, StyleTransferGenerator
 from aigen.t2i import TextToImageGenerator
+from aigen.translate import translate_to_english
 from aigen.utils import get_device
 
 LOW_VRAM_DEFAULT = True
@@ -69,18 +70,26 @@ def run_t2i(
     t2i_generator.low_vram = low_vram
     _unload_others(keep="t2i")
 
+    # CLIPは英語中心で学習されているため、日本語が含まれる場合は生成前に英訳する
+    translated_prompt = translate_to_english(prompt)
+    translated_negative = translate_to_english(negative_prompt)
+
     model_id = T2I_MODEL_CHOICES[model_name]
     image, used_seed = t2i_generator.generate(
         model_id,
-        prompt,
-        negative_prompt,
+        translated_prompt,
+        translated_negative,
         int(steps),
         float(guidance_scale),
         int(width),
         int(height),
         int(seed),
     )
-    return image, f"使用シード値: {used_seed}"
+
+    log = f"使用シード値: {used_seed}"
+    if translated_prompt != prompt.strip():
+        log += f"\n翻訳後プロンプト: {translated_prompt}"
+    return image, log
 
 
 def run_object_gen(
@@ -104,12 +113,17 @@ def run_object_gen(
     t2i_generator.low_vram = low_vram
     _unload_others(keep="t2i")
 
+    # CLIPは英語中心で学習されているため、日本語が含まれる場合は生成前に英訳する
+    translated_subject = translate_to_english(subject_prompt)
+    translated_extra = translate_to_english(extra_prompt)
+    translated_negative = translate_to_english(negative_prompt)
+
     model_id = T2I_MODEL_CHOICES[model_name]
-    prompt = build_object_prompt(subject_prompt, style_preset, extra_prompt)
+    prompt = build_object_prompt(translated_subject, style_preset, translated_extra)
     image, used_seed = t2i_generator.generate(
         model_id,
         prompt,
-        negative_prompt,
+        translated_negative,
         int(steps),
         float(guidance_scale),
         int(width),
@@ -118,6 +132,8 @@ def run_object_gen(
     )
 
     log = f"使用シード値: {used_seed}"
+    if translated_subject != subject_prompt.strip():
+        log += f"\n翻訳後プロンプト: {prompt}"
     if transparent_bg:
         try:
             image = remove_background(image)
@@ -146,19 +162,27 @@ def run_style_transfer(
     style_generator.low_vram = low_vram
     _unload_others(keep="style")
 
+    # CLIPは英語中心で学習されているため、日本語が含まれる場合は生成前に英訳する
+    translated_extra = translate_to_english(extra_prompt)
+    translated_negative = translate_to_english(negative_prompt)
+
     model_id = STYLE_MODEL_CHOICES[model_name]
     result, used_seed = style_generator.generate(
         model_id,
         image,
         style_preset,
-        extra_prompt,
-        negative_prompt,
+        translated_extra,
+        translated_negative,
         float(strength),
         int(steps),
         float(guidance_scale),
         int(seed),
     )
-    return result, f"使用シード値: {used_seed}"
+
+    log = f"使用シード値: {used_seed}"
+    if translated_extra != extra_prompt.strip():
+        log += f"\n翻訳後の追加プロンプト: {translated_extra}"
+    return result, log
 
 
 def run_i2v(
@@ -208,6 +232,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
         "テキストから画像生成 (T2I) / 動画編集素材向けオブジェクト生成 / "
         "画像のスタイル変換 (アニメ風など) / 画像から動画生成 (I2V) を"
         "ローカル環境で実行します。\n\n"
+        "プロンプトは日本語で入力できます（日本語が含まれる場合、生成前にローカルの翻訳モデルで自動的に英訳されます）。\n\n"
         f"検出デバイス: **{_DEVICE_LABELS.get(get_device(), get_device())}**"
     )
 

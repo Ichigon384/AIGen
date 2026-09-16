@@ -11,6 +11,10 @@
 すべて [diffusers](https://github.com/huggingface/diffusers) 上のオープンソースモデルを使用しており、
 APIキーは不要・生成コストもかかりません（電気代とダウンロード帯域を除く）。
 
+**プロンプトは日本語で入力できます。** 画像生成モデルのテキストエンコーダ(CLIP)は英語中心で学習されているため、
+入力に日本語が含まれる場合はローカルの翻訳モデル（[Helsinki-NLP/opus-mt-ja-en](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en)）で
+生成前に自動的に英訳されます。英語のみのプロンプトはそのまま使われ、翻訳処理はスキップされます。
+
 ## クイックスタート（ダブルクリックで起動）
 
 初回セットアップ（仮想環境作成・依存関係インストール）とアプリ起動をまとめて行うランチャーを用意しています。
@@ -114,10 +118,11 @@ VRAM/メモリが不足する場合は、解像度・フレーム数・「デコ
 
 | 機能 | 既定モデル | 備考 |
 | --- | --- | --- |
-| T2I | `stabilityai/stable-diffusion-xl-base-1.0` | 高品質。軽量版として `runwayml/stable-diffusion-v1-5` も選択可 |
+| T2I | `stabilityai/stable-diffusion-xl-base-1.0` | 高品質。軽量版として `stable-diffusion-v1-5/stable-diffusion-v1-5` も選択可 |
 | オブジェクト生成 | （T2Iと同じモデルを流用） | 背景透過には別途 `rembg` の U2Net モデル（約176MB）を使用 |
-| スタイル変換 | `Linaqruf/animagine-xl-3.1` | アニメ風特化。軽量版として `hakurei/waifu-diffusion` も選択可 |
+| スタイル変換 | `cagliostrolab/animagine-xl-3.1` | アニメ風特化。軽量版として `hakurei/waifu-diffusion` も選択可 |
 | I2V | `stabilityai/stable-video-diffusion-img2vid-xt` | 軽量版として `stabilityai/stable-video-diffusion-img2vid` も選択可 |
+| 日本語プロンプトの自動翻訳 | `Helsinki-NLP/opus-mt-ja-en` | 常にCPUで動作（数百MB）。日本語を含むプロンプトが入力された時のみ使用 |
 
 いずれのモデルも各配布元のライセンス（多くはOpenRAIL系やCreativeML系）に従います。
 生成物を商用利用・再配布する場合は、利用前に各モデルページのライセンスを必ずご確認ください。
@@ -155,6 +160,8 @@ VRAM/メモリが不足する場合は、解像度・フレーム数・「デコ
 - **オブジェクト生成の背景透過でその他のエラーになる**: 初回のモデルダウンロード（`~/.u2net`、約176MB）がネットワーク環境により失敗している可能性があります。インターネット接続を確認し、再実行してください。
 - **オブジェクト生成で単一オブジェクトではなく、繰り返し柄（パターン）画像になってしまう**: `leaf`（葉）や`flower`（花）のように、学習データ上「壁紙・テキスタイル柄」との結びつきが強い単語だと起こりやすい現象です。本ツールは被写体を自動的に「a single 〜」という形に補正し、ネガティブプロンプトにも `pattern, seamless pattern, tile, tiling` 等を追加していますが、改善しない場合は入力欄でより具体的に「a single red maple leaf, one leaf only」のように明示すると効果的です。
 - **`UnidentifiedImageError` が出て画像をアップロードできない（`.HEIC`ファイルなど）**: iPhoneで撮影した写真はHEIC/HEIF形式のことが多く、Pillow単体では読み込めません。本ツールは `pillow-heif` によりHEIC/HEIFに対応済みです。このエラーが出る場合は `pip install -r requirements.txt` を再実行して `pillow-heif` を導入し、アプリを再起動してください。
+- **日本語プロンプトの翻訳でエラーになる / `sentencepiece` 関連のエラーが出る**: 翻訳モデルのトークナイザに `sentencepiece` が必要です。`pip install -r requirements.txt` を再実行してください。初回は翻訳モデル（`Helsinki-NLP/opus-mt-ja-en`、数百MB）のダウンロードも発生するため、インターネット接続も確認してください。
+- **日本語プロンプトの翻訳結果が不自然/意図と違う**: 機械翻訳のため、特に固有名詞・擬音語・口語表現などはうまく訳せないことがあります。生成結果の下のログ欄に「翻訳後プロンプト」として実際に使われた英語が表示されるので、意図と違う場合はプロンプトの言い回しを変えるか、該当部分だけ英語で直接入力してください。
 
 ## ディレクトリ構成
 
@@ -168,8 +175,9 @@ AIGen/
 │   ├── utils.py               # デバイス判定・メモリ最適化・共通処理
 │   ├── t2i.py                  # T2I (Text-to-Image) パイプライン
 │   ├── object_gen.py            # オブジェクト生成用プロンプト・背景透過処理
-│   ├── style_transfer.py         # 画像スタイル変換 (img2img) パイプライン
-│   └── i2v.py                      # I2V (Image-to-Video) パイプライン
+│   ├── translate.py              # 日本語プロンプトの自動英訳
+│   ├── style_transfer.py          # 画像スタイル変換 (img2img) パイプライン
+│   └── i2v.py                       # I2V (Image-to-Video) パイプライン
 ├── outputs/                   # 生成された画像・動画の保存先
 ├── requirements.txt
 └── README.md
