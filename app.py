@@ -414,7 +414,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                     t2i_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
                     t2i_button = gr.Button("生成", variant="primary")
                 with gr.Column():
-                    t2i_output = gr.Image(label="生成結果")
+                    t2i_output = gr.Image(label="生成結果", format="png")
                     t2i_log = gr.Textbox(label="ログ", interactive=False)
 
             t2i_button.click(
@@ -470,7 +470,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                     obj_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
                     obj_button = gr.Button("生成", variant="primary")
                 with gr.Column():
-                    obj_output = gr.Image(label="生成結果", image_mode="RGBA")
+                    obj_output = gr.Image(label="生成結果", image_mode="RGBA", format="png")
                     obj_log = gr.Textbox(label="ログ", interactive=False)
 
             obj_button.click(
@@ -520,7 +520,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                     style_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
                     style_button = gr.Button("変換", variant="primary")
                 with gr.Column():
-                    style_output = gr.Image(label="変換結果")
+                    style_output = gr.Image(label="変換結果", format="png")
                     style_log = gr.Textbox(label="ログ", interactive=False)
 
             style_button.click(
@@ -591,7 +591,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                 "生成物はすべて `outputs/` フォルダに保存されており、アプリを再起動しても消えません。"
             )
             history_refresh_button = gr.Button("更新")
-            history_gallery = gr.Gallery(label="画像生成履歴", columns=4, height="auto")
+            history_gallery = gr.Gallery(label="画像生成履歴", columns=4, height="auto", format="png")
             history_detail = gr.Textbox(label="詳細（サムネイルをクリック）", lines=8, interactive=False)
             history_state = gr.State([])
             history_video_text = gr.Textbox(label="I2V(動画)生成履歴", lines=8, interactive=False)
