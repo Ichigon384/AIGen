@@ -18,7 +18,8 @@ imageio-ffmpeg>=0.4.9
 pillow-heif>=0.15.0
 
 # オブジェクト生成タブの背景透過処理に使用 (CPU上のonnxruntimeで動作し、GPU種別を問わず利用可能)
-rembg>=2.0.50
+# 新しいバージョンのrembgはonnxruntimeを同梱しないため、[cpu]エクストラを明示的に指定する
+rembg[cpu]>=2.0.50
 
 # 任意: VRAM節約・高速化 (NVIDIA GPU環境のみ。Macでは不要/非対応)
 # xformers

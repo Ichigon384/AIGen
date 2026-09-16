@@ -51,13 +51,17 @@ def optimize_pipeline(pipe, low_vram: bool = True):
         return pipe
 
     # MPS (Mac) / CPU: model_cpu_offloadとxformersはCUDA専用のため使わない。
-    # 統合メモリの消費を抑えるため、attention/vae slicingは常に有効化する。
     pipe.to(device)
-    pipe.enable_attention_slicing()
-    try:
-        pipe.enable_vae_slicing()
-    except AttributeError:
-        pass
+
+    if low_vram:
+        # attention/vae slicingは統合メモリの消費を抑えるが、MPSでは処理が
+        # 細切れになることでかえって大幅に遅くなる場合があるため、
+        # 統合メモリに余裕がある場合は省メモリモードをOFFにして無効化できるようにする。
+        pipe.enable_attention_slicing()
+        try:
+            pipe.enable_vae_slicing()
+        except AttributeError:
+            pass
 
     return pipe
 
