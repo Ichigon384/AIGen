@@ -141,12 +141,19 @@ VRAM/メモリが不足する場合は、解像度・フレーム数・「デコ
 
 - **GPU/MPSが使われずCPUで動いてしまう**: NVIDIA GPU環境ではCUDA対応のPyTorchが入っていない可能性があります（手順3を確認）。Macの場合はmacOS 12.3以降・Apple Siliconであることを確認してください（Intel Macは非対応）。
 - **モデルダウンロードが失敗する**: 一部モデルはHugging Faceの利用規約への同意が必要な場合があります。ブラウザでモデルページ（例: `https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt`）を開いて同意した上で、`huggingface-cli login` でログインしてから再実行してください。
+- **`401 Client Error` / `Invalid username or password` / `Repository Not Found` が出る（公開モデルのはずなのに読み込めない）**: ローカルに保存されている（`huggingface-cli login`等で設定した）Hugging Faceのトークンが無効・期限切れになっていると、公開モデルへのアクセスまで拒否されることがあります。T2I・オブジェクト生成・画像スタイル変換で使うモデルは認証不要な公開モデルのため、本ツールはこれらを常に未認証（トークンを使わない）で取得するようにしていますが、それでも発生する場合は以下を試してください。
+  ```bash
+  huggingface-cli logout
+  # または: rm ~/.cache/huggingface/token
+  ```
+  シェルの環境変数 `HF_TOKEN` を設定している場合は、`echo $HF_TOKEN` で値を確認し、不要であれば `unset HF_TOKEN` してください。I2V (Stable Video Diffusion) はモデルによってはログインが必要なため、こちらは有効なトークンでの再ログインが必要です。
 - **動画生成でエラーになる**: `imageio-ffmpeg` が正しくインストールされているか確認してください（`pip install -r requirements.txt` で導入済みのはずです）。
 - **Macで画像が真っ黒になる**: 稀にMPSのfloat16関連の不具合で発生することがあります。本ツールはMac/CPUでは既定でfloat32を使用しているため通常は問題ありませんが、発生する場合はPyTorchを最新版に更新してください。
 - **`requirements.txt` が見つからない (`pip install -r requirements.txt` が失敗する)**: 意図せず入れ子のディレクトリに入っている可能性があります。macOSはデフォルトでファイル名の大文字・小文字を区別しないため、リポジトリ直下で `cd AIGen` すると、中の `aigen/`（Pythonパッケージ）フォルダに入ってしまうことがあります。`pwd` で現在地を確認し、`config.py` や `t2i.py` などが直接見えている場合は `cd ..` で一つ上に戻ってください。`app.py` と `requirements.txt` がある階層が正しいリポジトリ直下です。
 - **画像スタイル変換 (img2img) でエラーになる**: 最も多い原因は、アップロードした画像のサイズが8の倍数でないことによるVAEの形状不一致エラーです。本ツールは生成前に自動でサイズを調整するようにしていますが、それでも発生する場合はエラーメッセージ全文を確認してください（メモリ不足の場合は「省メモリモード」をON、または画像を小さくしてから再度アップロードしてください）。
 - **オブジェクト生成の背景透過で `ModuleNotFoundError: No module named 'onnxruntime'` が出る**: `rembg` は背景除去の実行エンジンとして `onnxruntime` を必要としますが、バージョンによっては同梱されません。本リポジトリは `requirements.txt` で `rembg[cpu]` を指定済みなので、`pip install -r requirements.txt` を再実行してください。それでも解決しない場合、非常に新しいPythonバージョン（3.13/3.14など）では `onnxruntime` の対応ビルドがまだ提供されていないことがあります。その場合はPython 3.11または3.12で仮想環境を作り直してください（例: `python3.12 -m venv .venv`）。
 - **オブジェクト生成の背景透過でその他のエラーになる**: 初回のモデルダウンロード（`~/.u2net`、約176MB）がネットワーク環境により失敗している可能性があります。インターネット接続を確認し、再実行してください。
+- **オブジェクト生成で単一オブジェクトではなく、繰り返し柄（パターン）画像になってしまう**: `leaf`（葉）や`flower`（花）のように、学習データ上「壁紙・テキスタイル柄」との結びつきが強い単語だと起こりやすい現象です。本ツールは被写体を自動的に「a single 〜」という形に補正し、ネガティブプロンプトにも `pattern, seamless pattern, tile, tiling` 等を追加していますが、改善しない場合は入力欄でより具体的に「a single red maple leaf, one leaf only」のように明示すると効果的です。
 - **`UnidentifiedImageError` が出て画像をアップロードできない（`.HEIC`ファイルなど）**: iPhoneで撮影した写真はHEIC/HEIF形式のことが多く、Pillow単体では読み込めません。本ツールは `pillow-heif` によりHEIC/HEIFに対応済みです。このエラーが出る場合は `pip install -r requirements.txt` を再実行して `pillow-heif` を導入し、アプリを再起動してください。
 
 ## ディレクトリ構成

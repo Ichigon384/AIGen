@@ -38,6 +38,10 @@ class TextToImageGenerator:
             model_id,
             torch_dtype=dtype,
             use_safetensors=True,
+            # 本ツールが使うモデルはすべて公開モデルのため認証不要。
+            # ローカルに無効/期限切れのHFトークンが保存されていると公開モデルの
+            # 取得まで401エラーになることがあるため、明示的に未認証で取得する。
+            token=False,
         )
         self.pipe = optimize_pipeline(pipe, low_vram=self.low_vram)
         self.model_id = model_id

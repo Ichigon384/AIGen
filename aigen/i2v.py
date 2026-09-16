@@ -33,6 +33,8 @@ class ImageToVideoGenerator:
         device = get_device()
         dtype = get_torch_dtype(device)
 
+        # Stable Video Diffusionはモデルページでのライセンス同意が必要な場合があり、
+        # T2I/スタイル変換と異なりtoken=Falseを強制しない（ログイン済みトークンを使う）。
         pipe = StableVideoDiffusionPipeline.from_pretrained(
             model_id,
             torch_dtype=dtype,
