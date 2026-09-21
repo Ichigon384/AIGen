@@ -1,5 +1,5 @@
 """AIGen: ローカルで動くAI画像・動画生成ツール
-(T2I / オブジェクト生成 / 画像スタイル変換 / I2V)。
+(T2I / オブジェクト生成 / 画像スタイル変換 / I2V / T2V)。
 
 起動方法:
     python app.py
@@ -22,7 +22,12 @@ pillow_heif.register_heif_opener()
 
 import gradio as gr
 
-from aigen.config import I2V_MODEL_CHOICES, STYLE_MODEL_CHOICES, T2I_MODEL_CHOICES
+from aigen.config import (
+    I2V_MODEL_CHOICES,
+    STYLE_MODEL_CHOICES,
+    T2I_MODEL_CHOICES,
+    T2V_MODEL_CHOICES,
+)
 from aigen.history import load_history, record_existing_output, save_image_output
 from aigen.i2v import ImageToVideoGenerator
 from aigen.object_gen import (
@@ -33,6 +38,7 @@ from aigen.object_gen import (
 )
 from aigen.style_transfer import STYLE_PRESETS, StyleTransferGenerator
 from aigen.t2i import TextToImageGenerator
+from aigen.t2v import TextToVideoGenerator
 from aigen.translate import translate_to_english
 from aigen.utils import get_device
 
@@ -42,6 +48,7 @@ OUTPUT_DIR = "outputs"
 t2i_generator = TextToImageGenerator(low_vram=LOW_VRAM_DEFAULT)
 style_generator = StyleTransferGenerator(low_vram=LOW_VRAM_DEFAULT)
 i2v_generator = ImageToVideoGenerator(low_vram=LOW_VRAM_DEFAULT, output_dir=OUTPUT_DIR)
+t2v_generator = TextToVideoGenerator(low_vram=LOW_VRAM_DEFAULT, output_dir=OUTPUT_DIR)
 
 
 def _unload_others(keep: str) -> None:
@@ -52,6 +59,8 @@ def _unload_others(keep: str) -> None:
         style_generator.unload()
     if keep != "i2v":
         i2v_generator.unload()
+    if keep != "t2v":
+        t2v_generator.unload()
 
 
 def run_t2i(
@@ -289,6 +298,67 @@ def run_i2v(
     return video_path, f"使用シード値: {used_seed}"
 
 
+def run_t2v(
+    model_name: str,
+    prompt: str,
+    negative_prompt: str,
+    num_frames: float,
+    fps: float,
+    steps: float,
+    guidance_scale: float,
+    width: float,
+    height: float,
+    seed: float,
+    low_vram: bool,
+):
+    if not prompt or not prompt.strip():
+        raise gr.Error("プロンプトを入力してください。")
+
+    t2v_generator.low_vram = low_vram
+    _unload_others(keep="t2v")
+
+    # CLIPは英語中心で学習されているため、日本語が含まれる場合は生成前に英訳する
+    translated_prompt = translate_to_english(prompt)
+    translated_negative = translate_to_english(negative_prompt)
+
+    model_id = T2V_MODEL_CHOICES[model_name]
+    video_path, used_seed = t2v_generator.generate(
+        model_id,
+        translated_prompt,
+        translated_negative,
+        int(num_frames),
+        int(fps),
+        int(steps),
+        float(guidance_scale),
+        int(width),
+        int(height),
+        int(seed),
+    )
+
+    record_existing_output(
+        OUTPUT_DIR,
+        kind="t2v",
+        kind_label="T2V(動画)",
+        output_path=video_path,
+        metadata={
+            "model": model_name,
+            "prompt": prompt.strip(),
+            "translated_prompt": translated_prompt,
+            "negative_prompt": translated_negative,
+            "num_frames": int(num_frames),
+            "fps": int(fps),
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
+            "seed": used_seed,
+        },
+    )
+
+    log = f"使用シード値: {used_seed}"
+    if translated_prompt != prompt.strip():
+        log += f"\n翻訳後プロンプト: {translated_prompt}"
+    return video_path, log
+
+
 def _history_caption(record: dict) -> str:
     seed = record.get("seed", "?")
     prompt = (
@@ -342,19 +412,19 @@ def _history_detail(record: dict) -> str:
 def refresh_history():
     records = load_history(OUTPUT_DIR)
     image_records = [r for r in records if r.get("kind") in ("t2i", "object", "style")]
-    video_records = [r for r in records if r.get("kind") == "i2v"]
+    video_records = [r for r in records if r.get("kind") in ("i2v", "t2v")]
 
     gallery_value = [(r["path"], _history_caption(r)) for r in image_records]
 
     if video_records:
         video_text = "\n\n".join(
-            f"[{r.get('timestamp', '')}] seed={r.get('seed', '?')}\n"
+            f"[{r.get('kind_label', '')}] [{r.get('timestamp', '')}] seed={r.get('seed', '?')}\n"
             f"  プロンプト: {(r.get('translated_prompt') or r.get('prompt') or '(なし)')[:80]}\n"
             f"  保存先: {r.get('path', '')}"
             for r in video_records
         )
     else:
-        video_text = "(まだI2Vの生成履歴はありません)"
+        video_text = "(まだI2V/T2Vの生成履歴はありません)"
 
     return gallery_value, image_records, video_text
 
@@ -375,7 +445,8 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
     gr.Markdown(
         "# AIGen\n"
         "テキストから画像生成 (T2I) / 動画編集素材向けオブジェクト生成 / "
-        "画像のスタイル変換 (アニメ風など) / 画像から動画生成 (I2V) を"
+        "画像のスタイル変換 (アニメ風など) / 画像から動画生成 (I2V) / "
+        "テキストから動画生成 (T2V) を"
         "ローカル環境で実行します。\n\n"
         "プロンプトは日本語で入力できます（日本語が含まれる場合、生成前にローカルの翻訳モデルで自動的に英訳されます）。\n\n"
         f"検出デバイス: **{_DEVICE_LABELS.get(get_device(), get_device())}**"
@@ -583,18 +654,73 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                 outputs=[i2v_output, i2v_log],
             )
 
+        with gr.Tab("テキストから動画生成 (T2V)"):
+            gr.Markdown(
+                "プロンプトから直接、短い動画を生成します。I2Vより解像度・フレーム数は控えめですが、"
+                "元画像なしで動画を作れます。"
+            )
+            with gr.Row():
+                with gr.Column():
+                    t2v_model = gr.Dropdown(
+                        list(T2V_MODEL_CHOICES.keys()),
+                        value=list(T2V_MODEL_CHOICES.keys())[0],
+                        label="モデル",
+                    )
+                    t2v_prompt = gr.Textbox(
+                        label="プロンプト",
+                        lines=3,
+                        placeholder="例: a panda eating bamboo in a forest, high quality",
+                    )
+                    t2v_negative = gr.Textbox(
+                        label="ネガティブプロンプト",
+                        lines=2,
+                        value="low quality, worst quality, blurry, deformed",
+                    )
+                    with gr.Row():
+                        t2v_width = gr.Slider(128, 576, value=256, step=64, label="幅")
+                        t2v_height = gr.Slider(128, 576, value=256, step=64, label="高さ")
+                    with gr.Row():
+                        t2v_frames = gr.Slider(8, 32, value=16, step=1, label="フレーム数")
+                        t2v_fps = gr.Slider(4, 16, value=8, step=1, label="FPS")
+                    with gr.Row():
+                        t2v_steps = gr.Slider(1, 100, value=25, step=1, label="ステップ数")
+                        t2v_cfg = gr.Slider(1.0, 20.0, value=9.0, step=0.5, label="CFGスケール")
+                    t2v_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
+                    t2v_button = gr.Button("動画生成", variant="primary")
+                with gr.Column():
+                    t2v_output = gr.Video(label="生成結果")
+                    t2v_log = gr.Textbox(label="ログ", interactive=False)
+
+            t2v_button.click(
+                run_t2v,
+                inputs=[
+                    t2v_model,
+                    t2v_prompt,
+                    t2v_negative,
+                    t2v_frames,
+                    t2v_fps,
+                    t2v_steps,
+                    t2v_cfg,
+                    t2v_width,
+                    t2v_height,
+                    t2v_seed,
+                    low_vram_checkbox,
+                ],
+                outputs=[t2v_output, t2v_log],
+            )
+
         with gr.Tab("生成履歴"):
             gr.Markdown(
                 "T2I・オブジェクト生成・画像スタイル変換の生成結果を新しい順に表示します。"
                 "サムネイルをクリックすると、使用したプロンプトやシード値などの詳細が下に表示されます。"
-                "I2V（動画）の履歴は下部に一覧表示されます。"
+                "I2V/T2V（動画）の履歴は下部に一覧表示されます。"
                 "生成物はすべて `outputs/` フォルダに保存されており、アプリを再起動しても消えません。"
             )
             history_refresh_button = gr.Button("更新")
             history_gallery = gr.Gallery(label="画像生成履歴", columns=4, height="auto", format="png")
             history_detail = gr.Textbox(label="詳細（サムネイルをクリック）", lines=8, interactive=False)
             history_state = gr.State([])
-            history_video_text = gr.Textbox(label="I2V(動画)生成履歴", lines=8, interactive=False)
+            history_video_text = gr.Textbox(label="I2V/T2V(動画)生成履歴", lines=8, interactive=False)
 
             history_refresh_button.click(
                 refresh_history,

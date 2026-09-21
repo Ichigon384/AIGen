@@ -34,3 +34,9 @@ I2V_MODEL_CHOICES: dict[str, str] = {
     "Stable Video Diffusion XT (最大25フレーム)": "stabilityai/stable-video-diffusion-img2vid-xt",
     "Stable Video Diffusion (最大14フレーム・軽量)": "stabilityai/stable-video-diffusion-img2vid",
 }
+
+# テキストから動画生成 (T2V) で選べるモデル
+T2V_MODEL_CHOICES: dict[str, str] = {
+    "ModelScope T2V (軽量・標準、256x256)": "damo-vilab/text-to-video-ms-1.7b",
+    "Zeroscope v2 576w (高品質・やや重い、576x320)": "cerspense/zeroscope_v2_576w",
+}
