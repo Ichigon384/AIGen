@@ -40,3 +40,11 @@ T2V_MODEL_CHOICES: dict[str, str] = {
     "ModelScope T2V (軽量・標準、256x256)": "damo-vilab/text-to-video-ms-1.7b",
     "Zeroscope v2 576w (高品質・やや重い、576x320)": "cerspense/zeroscope_v2_576w",
 }
+
+# キャラクター一貫生成 (MV素材向け: 同じキャラクターのポーズ・アングル違いを生成) で選べるモデル
+# IP-Adapter (h94/IP-Adapter) と組み合わせて使う。SDXL系/SD1.5系でIP-Adapterの
+# 重みファイルが異なるため、モデルIDに"xl"が含まれるかで自動的に切り替える。
+CHARACTER_MODEL_CHOICES: dict[str, str] = {
+    "Animagine XL 3.1 (アニメ風・SDXLベース、高品質)": "cagliostrolab/animagine-xl-3.1",
+    "Stable Diffusion 1.5 (軽量・高速)": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+}

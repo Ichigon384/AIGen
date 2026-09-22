@@ -1,5 +1,5 @@
 """AIGen: ローカルで動くAI画像・動画生成ツール
-(T2I / オブジェクト生成 / 画像スタイル変換 / I2V / T2V)。
+(T2I / オブジェクト生成 / キャラクター一貫生成 / 画像スタイル変換 / I2V / T2V)。
 
 起動方法:
     python app.py
@@ -22,7 +22,13 @@ pillow_heif.register_heif_opener()
 
 import gradio as gr
 
+from aigen.character import (
+    CHARACTER_NEGATIVE_DEFAULT,
+    CHARACTER_STYLE_PRESETS,
+    CharacterGenerator,
+)
 from aigen.config import (
+    CHARACTER_MODEL_CHOICES,
     I2V_MODEL_CHOICES,
     STYLE_MODEL_CHOICES,
     T2I_MODEL_CHOICES,
@@ -49,6 +55,7 @@ t2i_generator = TextToImageGenerator(low_vram=LOW_VRAM_DEFAULT)
 style_generator = StyleTransferGenerator(low_vram=LOW_VRAM_DEFAULT)
 i2v_generator = ImageToVideoGenerator(low_vram=LOW_VRAM_DEFAULT, output_dir=OUTPUT_DIR)
 t2v_generator = TextToVideoGenerator(low_vram=LOW_VRAM_DEFAULT, output_dir=OUTPUT_DIR)
+character_generator = CharacterGenerator(low_vram=LOW_VRAM_DEFAULT)
 
 
 def _unload_others(keep: str) -> None:
@@ -61,6 +68,8 @@ def _unload_others(keep: str) -> None:
         i2v_generator.unload()
     if keep != "t2v":
         t2v_generator.unload()
+    if keep != "character":
+        character_generator.unload()
 
 
 def run_t2i(
@@ -178,6 +187,84 @@ def run_object_gen(
             "prompt": prompt,
             "style_preset": style_preset,
             "negative_prompt": translated_negative,
+            "transparent_bg": transparent_bg,
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
+            "seed": used_seed,
+        },
+    )
+
+    return image, log
+
+
+def run_character_gen(
+    model_name: str,
+    reference_image,
+    pose_prompt: str,
+    style_preset: str,
+    extra_prompt: str,
+    negative_prompt: str,
+    identity_strength: float,
+    transparent_bg: bool,
+    steps: float,
+    guidance_scale: float,
+    width: float,
+    height: float,
+    seed: float,
+    low_vram: bool,
+):
+    if reference_image is None:
+        raise gr.Error("キャラクターの参照画像をアップロードしてください。")
+    if not pose_prompt or not pose_prompt.strip():
+        raise gr.Error("ポーズ・カメラアングルを入力してください。")
+
+    character_generator.low_vram = low_vram
+    _unload_others(keep="character")
+
+    # CLIPは英語中心で学習されているため、日本語が含まれる場合は生成前に英訳する
+    translated_pose = translate_to_english(pose_prompt)
+    translated_extra = translate_to_english(extra_prompt)
+    translated_negative = translate_to_english(negative_prompt)
+
+    model_id = CHARACTER_MODEL_CHOICES[model_name]
+    preset_prompt = CHARACTER_STYLE_PRESETS.get(style_preset, "")
+    prompt = ", ".join(p for p in [translated_pose, preset_prompt, translated_extra] if p)
+
+    image, used_seed = character_generator.generate(
+        model_id,
+        reference_image,
+        prompt,
+        translated_negative,
+        float(identity_strength),
+        int(steps),
+        float(guidance_scale),
+        int(width),
+        int(height),
+        int(seed),
+    )
+
+    log = f"使用シード値: {used_seed}"
+    if translated_pose != pose_prompt.strip():
+        log += f"\n翻訳後プロンプト: {prompt}"
+    if transparent_bg:
+        try:
+            image = remove_background(image)
+            log += " / 背景透過: 完了"
+        except RuntimeError as exc:
+            raise gr.Error(str(exc)) from exc
+
+    save_image_output(
+        OUTPUT_DIR,
+        kind="character",
+        kind_label="キャラクター一貫生成",
+        image=image,
+        metadata={
+            "model": model_name,
+            "pose_prompt": pose_prompt.strip(),
+            "prompt": prompt,
+            "style_preset": style_preset,
+            "negative_prompt": translated_negative,
+            "identity_strength": float(identity_strength),
             "transparent_bg": transparent_bg,
             "steps": int(steps),
             "guidance_scale": float(guidance_scale),
@@ -365,6 +452,7 @@ def _history_caption(record: dict) -> str:
         record.get("translated_prompt")
         or record.get("prompt")
         or record.get("subject_prompt")
+        or record.get("pose_prompt")
         or record.get("translated_extra_prompt")
         or record.get("extra_prompt")
         or ""
@@ -383,6 +471,8 @@ def _history_detail(record: dict) -> str:
         lines.append(f"モデル: {record['model']}")
     if record.get("subject_prompt"):
         lines.append(f"被写体: {record['subject_prompt']}")
+    if record.get("pose_prompt"):
+        lines.append(f"ポーズ・アングル: {record['pose_prompt']}")
     if record.get("prompt"):
         lines.append(f"プロンプト: {record['prompt']}")
     if record.get("translated_prompt") and record["translated_prompt"] != record.get("prompt"):
@@ -397,6 +487,8 @@ def _history_detail(record: dict) -> str:
         lines.append(f"ネガティブプロンプト: {record['negative_prompt']}")
     if "strength" in record:
         lines.append(f"変換強度: {record['strength']}")
+    if "identity_strength" in record:
+        lines.append(f"キャラクター再現の強さ: {record['identity_strength']}")
     if "seed" in record:
         lines.append(f"シード値: {record['seed']}")
     if record.get("steps"):
@@ -411,7 +503,7 @@ def _history_detail(record: dict) -> str:
 
 def refresh_history():
     records = load_history(OUTPUT_DIR)
-    image_records = [r for r in records if r.get("kind") in ("t2i", "object", "style")]
+    image_records = [r for r in records if r.get("kind") in ("t2i", "object", "style", "character")]
     video_records = [r for r in records if r.get("kind") in ("i2v", "t2v")]
 
     gallery_value = [(r["path"], _history_caption(r)) for r in image_records]
@@ -445,8 +537,8 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
     gr.Markdown(
         "# AIGen\n"
         "テキストから画像生成 (T2I) / 動画編集素材向けオブジェクト生成 / "
-        "画像のスタイル変換 (アニメ風など) / 画像から動画生成 (I2V) / "
-        "テキストから動画生成 (T2V) を"
+        "MV向けキャラクター一貫生成 / 画像のスタイル変換 (アニメ風など) / "
+        "画像から動画生成 (I2V) / テキストから動画生成 (T2V) を"
         "ローカル環境で実行します。\n\n"
         "プロンプトは日本語で入力できます（日本語が含まれる場合、生成前にローカルの翻訳モデルで自動的に英訳されます）。\n\n"
         f"検出デバイス: **{_DEVICE_LABELS.get(get_device(), get_device())}**"
@@ -561,6 +653,75 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
                     low_vram_checkbox,
                 ],
                 outputs=[obj_output, obj_log],
+            )
+
+        with gr.Tab("キャラクター一貫生成 (MV素材向け)"):
+            gr.Markdown(
+                "MVなどで同じキャラクターのポーズ・カメラアングル違いをまとめて作るためのモードです。"
+                "キャラクターの参照画像を1枚アップロードすると、IP-Adapterがその見た目の特徴を"
+                "手がかりに、指定したポーズ・アングルの新しい画像を生成します（学習・LoRA作成は不要）。"
+                "背景は既定で透過して出力します。"
+            )
+            with gr.Row():
+                with gr.Column():
+                    char_model = gr.Dropdown(
+                        list(CHARACTER_MODEL_CHOICES.keys()),
+                        value=list(CHARACTER_MODEL_CHOICES.keys())[0],
+                        label="モデル",
+                    )
+                    char_reference_image = gr.Image(
+                        label="キャラクターの参照画像（顔・服装が分かるもの）", type="pil"
+                    )
+                    char_pose_prompt = gr.Textbox(
+                        label="ポーズ・カメラアングル",
+                        lines=2,
+                        placeholder="例: 全身、歩いているポーズ、横向き / close-up, front view, waving hand",
+                    )
+                    char_style_preset = gr.Dropdown(
+                        list(CHARACTER_STYLE_PRESETS.keys()), value="アニメ風", label="スタイルプリセット"
+                    )
+                    char_extra_prompt = gr.Textbox(label="追加プロンプト（任意）", lines=2)
+                    char_negative = gr.Textbox(
+                        label="ネガティブプロンプト",
+                        lines=2,
+                        value=CHARACTER_NEGATIVE_DEFAULT,
+                    )
+                    char_identity_strength = gr.Slider(
+                        0.0, 1.5, value=0.6, step=0.05,
+                        label="キャラクター再現の強さ (IP-Adapterスケール。高いほど参照画像に似るが、ポーズ指定が効きにくくなります)",
+                    )
+                    char_transparent = gr.Checkbox(value=True, label="背景を透過する (PNG/アルファチャンネル)")
+                    with gr.Row():
+                        char_width = gr.Slider(256, 1536, value=1024, step=64, label="幅")
+                        char_height = gr.Slider(256, 1536, value=1024, step=64, label="高さ")
+                    with gr.Row():
+                        char_steps = gr.Slider(1, 100, value=30, step=1, label="ステップ数")
+                        char_cfg = gr.Slider(1.0, 20.0, value=7.0, step=0.5, label="CFGスケール")
+                    char_seed = gr.Number(value=-1, label="シード値 (-1でランダム)", precision=0)
+                    char_button = gr.Button("生成", variant="primary")
+                with gr.Column():
+                    char_output = gr.Image(label="生成結果", image_mode="RGBA", format="png")
+                    char_log = gr.Textbox(label="ログ", interactive=False)
+
+            char_button.click(
+                run_character_gen,
+                inputs=[
+                    char_model,
+                    char_reference_image,
+                    char_pose_prompt,
+                    char_style_preset,
+                    char_extra_prompt,
+                    char_negative,
+                    char_identity_strength,
+                    char_transparent,
+                    char_steps,
+                    char_cfg,
+                    char_width,
+                    char_height,
+                    char_seed,
+                    low_vram_checkbox,
+                ],
+                outputs=[char_output, char_log],
             )
 
         with gr.Tab("画像スタイル変換"):
@@ -711,7 +872,7 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
 
         with gr.Tab("生成履歴"):
             gr.Markdown(
-                "T2I・オブジェクト生成・画像スタイル変換の生成結果を新しい順に表示します。"
+                "T2I・オブジェクト生成・キャラクター一貫生成・画像スタイル変換の生成結果を新しい順に表示します。"
                 "サムネイルをクリックすると、使用したプロンプトやシード値などの詳細が下に表示されます。"
                 "I2V/T2V（動画）の履歴は下部に一覧表示されます。"
                 "生成物はすべて `outputs/` フォルダに保存されており、アプリを再起動しても消えません。"
