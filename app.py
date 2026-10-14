@@ -230,18 +230,21 @@ def run_character_gen(
     preset_prompt = CHARACTER_STYLE_PRESETS.get(style_preset, "")
     prompt = ", ".join(p for p in [translated_pose, preset_prompt, translated_extra] if p)
 
-    image, used_seed = character_generator.generate(
-        model_id,
-        reference_image,
-        prompt,
-        translated_negative,
-        float(identity_strength),
-        int(steps),
-        float(guidance_scale),
-        int(width),
-        int(height),
-        int(seed),
-    )
+    try:
+        image, used_seed = character_generator.generate(
+            model_id,
+            reference_image,
+            prompt,
+            translated_negative,
+            float(identity_strength),
+            int(steps),
+            float(guidance_scale),
+            int(width),
+            int(height),
+            int(seed),
+        )
+    except RuntimeError as exc:
+        raise gr.Error(str(exc)) from exc
 
     log = f"使用シード値: {used_seed}"
     if translated_pose != pose_prompt.strip():
@@ -658,9 +661,9 @@ with gr.Blocks(title="AIGen - ローカルAI画像・動画生成ツール") as 
         with gr.Tab("キャラクター一貫生成 (MV素材向け)"):
             gr.Markdown(
                 "MVなどで同じキャラクターのポーズ・カメラアングル違いをまとめて作るためのモードです。"
-                "キャラクターの参照画像を1枚アップロードすると、IP-Adapterがその見た目の特徴を"
+                "キャラクターの参照画像を1枚アップロードすると、IP-Adapter FaceIDが顔の特徴量を"
                 "手がかりに、指定したポーズ・アングルの新しい画像を生成します（学習・LoRA作成は不要）。"
-                "背景は既定で透過して出力します。"
+                "参照画像は顔がはっきり写っているものを使用してください。背景は既定で透過して出力します。"
             )
             with gr.Row():
                 with gr.Column():

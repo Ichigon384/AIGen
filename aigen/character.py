@@ -1,9 +1,10 @@
 """MVなどで使う「同じキャラクターを保ったまま、ポーズやカメラアングルだけを変える」
 生成を行うモジュール。
 
-キャラクターの参照画像を1枚アップロードすると、IP-Adapter (h94/IP-Adapter) が
-その画像の見た目の特徴（顔・髪型・服装の色柄など）を手がかりとして生成に反映しつつ、
+キャラクターの参照画像を1枚アップロードすると、IP-Adapter FaceID (h94/IP-Adapter-FaceID) が
+insightfaceで抽出した「顔の特徴量（埋め込みベクトル）」を手がかりとして生成に反映しつつ、
 プロンプトで指定したポーズ・カメラアングルに従った新しい画像を作る。
+通常のIP-Adapter（画像全体の雰囲気を見るだけ）より、顔そのものの同一性を強く保てる。
 学習（ファインチューニング/LoRA作成）は不要で、参照画像1枚とプロンプトだけで使える。
 
 背景透過には aigen.object_gen の remove_background をそのまま利用する。
@@ -19,7 +20,6 @@ from .utils import (
     get_torch_dtype,
     make_generator,
     optimize_pipeline,
-    resize_to_valid_dimensions,
 )
 
 # キャラクター生成用のスタイルプリセット: プリセット名 -> プロンプトに追加する英語の説明
@@ -48,7 +48,55 @@ CHARACTER_NEGATIVE_DEFAULT = (
     "low quality, worst quality, blurry, deformed, cropped, bad anatomy"
 )
 
-_IP_ADAPTER_REPO = "h94/IP-Adapter"
+_IP_ADAPTER_FACEID_REPO = "h94/IP-Adapter-FaceID"
+
+_face_app = None
+
+
+def _get_face_app():
+    """insightfaceの顔検出・埋め込み抽出アプリを遅延初期化する（常にCPUで動作）。
+
+    顔検出は画像生成本体のGPU/MPS処理とは独立した軽い処理のため、VRAM/統合メモリの
+    管理対象には含めず、常にCPU上のonnxruntimeで実行する(rembgと同様の考え方)。
+    初回呼び出し時にモデル(buffalo_l、約300MB)を自動ダウンロードする。
+    """
+    global _face_app
+    if _face_app is None:
+        try:
+            from insightface.app import FaceAnalysis
+        except ImportError as exc:
+            raise RuntimeError(
+                "キャラクター一貫生成には insightface が必要です。"
+                "`pip install -r requirements.txt` を実行してください。"
+            ) from exc
+
+        app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+        app.prepare(ctx_id=-1, det_size=(640, 640))
+        _face_app = app
+
+    return _face_app
+
+
+def _extract_face_embedding(reference_image: Image.Image):
+    """参照画像から最も大きく写っている顔の埋め込みベクトルを抽出する。"""
+    import cv2
+    import numpy as np
+
+    app = _get_face_app()
+    bgr_image = cv2.cvtColor(np.array(reference_image.convert("RGB")), cv2.COLOR_RGB2BGR)
+    faces = app.get(bgr_image)
+
+    if not faces:
+        raise RuntimeError(
+            "参照画像から顔を検出できませんでした。顔がはっきり正面付近を向いて"
+            "写っている画像を使用してください。"
+        )
+
+    # 複数の顔が写っている場合は、最も大きく写っている顔を採用する
+    largest_face = max(
+        faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1])
+    )
+    return largest_face.normed_embedding
 
 
 class CharacterGenerator:
@@ -78,16 +126,16 @@ class CharacterGenerator:
             token=False,
         )
 
-        # 参照画像からキャラクターの特徴を反映させるためIP-Adapterを読み込む
-        # (SDXL系とSD1.5系で重みファイル・サブフォルダが異なる)
-        if is_xl:
-            pipe.load_ip_adapter(
-                _IP_ADAPTER_REPO, subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin"
-            )
-        else:
-            pipe.load_ip_adapter(
-                _IP_ADAPTER_REPO, subfolder="models", weight_name="ip-adapter_sd15.bin"
-            )
+        # 顔の埋め込みベクトルからキャラクターの同一性を反映させるため
+        # IP-Adapter FaceIDを読み込む (SDXL系とSD1.5系で重みファイルが異なる)。
+        # FaceIDはCLIP画像エンコーダを使わないため image_encoder_folder=None を指定する。
+        weight_name = "ip-adapter-faceid_sdxl.bin" if is_xl else "ip-adapter-faceid_sd15.bin"
+        pipe.load_ip_adapter(
+            _IP_ADAPTER_FACEID_REPO,
+            subfolder=None,
+            weight_name=weight_name,
+            image_encoder_folder=None,
+        )
 
         self.pipe = optimize_pipeline(pipe, low_vram=self.low_vram)
         self.model_id = model_id
@@ -112,20 +160,29 @@ class CharacterGenerator:
         height: int,
         seed: int,
     ) -> tuple[Image.Image, int]:
+        import torch
+
         self.load(model_id)
         device = get_device()
+        dtype = get_torch_dtype(device)
         generator, used_seed = make_generator(seed, device)
 
-        # IP-Adapterの影響度。高いほど参照画像に似るがポーズ指定の自由度が下がる
+        # IP-Adapterの影響度。高いほど参照画像(顔)に似るがポーズ指定の自由度が下がる
         self.pipe.set_ip_adapter_scale(identity_strength)
 
-        max_size = 1024 if "xl" in model_id.lower() else 768
-        ref_image = resize_to_valid_dimensions(reference_image.convert("RGB"), max_size=max_size)
+        face_embedding = _extract_face_embedding(reference_image)
+        # diffusers公式のIP-Adapter FaceID例と同じ手順でテンソル形状を組み立てる:
+        # (512,) -> (1,512) -> [tensor]をstackして(1,1,512) -> unsqueezeで(1,1,1,512)
+        positive_embeds = torch.from_numpy(face_embedding).unsqueeze(0)
+        positive_embeds = torch.stack([positive_embeds], dim=0).unsqueeze(0)
+        negative_embeds = torch.zeros_like(positive_embeds)
+        # classifier-free guidance用に [negative, positive] の順で結合する -> (2,1,1,512)
+        id_embeds = torch.cat([negative_embeds, positive_embeds]).to(device=device, dtype=dtype)
 
         result = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt or None,
-            ip_adapter_image=ref_image,
+            ip_adapter_image_embeds=[id_embeds],
             num_inference_steps=steps,
             guidance_scale=guidance_scale,
             width=width,

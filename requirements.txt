@@ -24,5 +24,13 @@ rembg[cpu]>=2.0.50
 # 日本語プロンプトの自動英訳 (Helsinki-NLP/opus-mt-ja-en) のトークナイザに必要
 sentencepiece>=0.2.0
 
+# キャラクター一貫生成タブの顔検出・顔埋め込み抽出 (IP-Adapter FaceID) に使用。
+# CPU上のonnxruntimeで動作する。非常に新しいPythonバージョン(3.13/3.14など)では
+# プリビルドされたwheelがまだ提供されておらずインストールに失敗する場合がある
+# (その場合はPython 3.11/3.12で仮想環境を作り直してください。README参照)。
+insightface>=0.7.3
+opencv-python-headless>=4.9.0.80
+numpy>=1.24.0
+
 # 任意: VRAM節約・高速化 (NVIDIA GPU環境のみ。Macでは不要/非対応)
 # xformers

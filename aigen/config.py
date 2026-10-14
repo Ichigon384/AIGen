@@ -42,7 +42,7 @@ T2V_MODEL_CHOICES: dict[str, str] = {
 }
 
 # キャラクター一貫生成 (MV素材向け: 同じキャラクターのポーズ・アングル違いを生成) で選べるモデル
-# IP-Adapter (h94/IP-Adapter) と組み合わせて使う。SDXL系/SD1.5系でIP-Adapterの
+# IP-Adapter FaceID (h94/IP-Adapter-FaceID) と組み合わせて使う。SDXL系/SD1.5系で
 # 重みファイルが異なるため、モデルIDに"xl"が含まれるかで自動的に切り替える。
 CHARACTER_MODEL_CHOICES: dict[str, str] = {
     "Animagine XL 3.1 (アニメ風・SDXLベース、高品質)": "cagliostrolab/animagine-xl-3.1",

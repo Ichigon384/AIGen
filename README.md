@@ -102,17 +102,20 @@ python app.py
 MVなどで「同じキャラクターのまま、ポーズやカメラアングルだけを変えたカットを何枚も作りたい」場合に使います。
 学習（LoRA作成など）は不要で、キャラクターの参照画像1枚と、ポーズ・アングルのプロンプトだけで生成できます。
 
-1. キャラクターの参照画像をアップロード（顔・髪型・服装がはっきり分かるもの推奨）
+1. キャラクターの参照画像をアップロード（**顔がはっきり正面付近を向いて写っているもの**を使用してください。顔が検出できないとエラーになります）
 2. ポーズ・カメラアングルを入力（例: `全身、歩いているポーズ、横向き`、日本語可）
 3. スタイルプリセット（アニメ風・フラットベクター風）を選択
-4. 「キャラクター再現の強さ」を調整（高いほど参照画像に似ますが、ポーズ指定が効きにくくなります。目安: 0.5〜0.8）
+4. 「キャラクター再現の強さ」を調整（高いほど参照画像の顔に似ますが、ポーズ指定が効きにくくなります。目安: 0.5〜0.8）
 5. 「背景を透過する」をON（既定でON）にすると、オブジェクト生成と同様に自動で背景を除去します
 6. 「生成」ボタンをクリック
 
-内部では [IP-Adapter](https://huggingface.co/h94/IP-Adapter) という技術を使い、参照画像の見た目の特徴を
-生成に反映させています。初回実行時のみIP-Adapterの重み（数百MB）を追加でダウンロードします。
-完全に同一人物として再現されるわけではなく、あくまで「似た特徴を持つキャラクター」が生成される点にご注意ください
+内部では [IP-Adapter FaceID](https://huggingface.co/h94/IP-Adapter-FaceID) という技術を使い、
+[insightface](https://github.com/deepinsight/insightface) で参照画像から抽出した「顔の特徴量」を
+生成に反映させています。画像全体の雰囲気だけを見る通常のIP-Adapterより、顔の同一性を強く保てます。
+初回実行時のみ顔検出モデル（約300MB）とIP-Adapter FaceIDの重み（数百MB）を追加でダウンロードします。
+完全に同一人物として再現されるわけではなく、あくまで「よく似た顔のキャラクター」が生成される点にご注意ください
 （似すぎない場合は「キャラクター再現の強さ」を上げる、ポーズが反映されにくい場合は下げて調整してください）。
+複数人が写っている参照画像では、最も大きく写っている顔が使われます。
 
 ### 4. 画像スタイル変換
 
@@ -166,7 +169,7 @@ PNGとして保存され、使用したプロンプト・翻訳後プロンプ�
 | --- | --- | --- |
 | T2I | `stabilityai/stable-diffusion-xl-base-1.0` | 高品質。軽量版として `stable-diffusion-v1-5/stable-diffusion-v1-5` も選択可 |
 | オブジェクト生成 | （T2Iと同じモデルを流用） | 背景透過には別途 `rembg` の U2Net モデル（約176MB）を使用 |
-| キャラクター一貫生成 | `cagliostrolab/animagine-xl-3.1` | 軽量版として `stable-diffusion-v1-5/stable-diffusion-v1-5` も選択可。参照画像の反映には別途 [IP-Adapter](https://huggingface.co/h94/IP-Adapter)（数百MB）を使用 |
+| キャラクター一貫生成 | `cagliostrolab/animagine-xl-3.1` | 軽量版として `stable-diffusion-v1-5/stable-diffusion-v1-5` も選択可。顔の特徴反映には別途 [IP-Adapter FaceID](https://huggingface.co/h94/IP-Adapter-FaceID)（数百MB）と顔検出モデル `buffalo_l`（約300MB）を使用 |
 | スタイル変換 | `cagliostrolab/animagine-xl-3.1` | アニメ風特化。軽量版として `hakurei/waifu-diffusion` も選択可 |
 | I2V | `stabilityai/stable-video-diffusion-img2vid-xt` | 軽量版として `stabilityai/stable-video-diffusion-img2vid` も選択可 |
 | T2V | `damo-vilab/text-to-video-ms-1.7b` | 256x256の軽量モデル。高品質版として `cerspense/zeroscope_v2_576w` (576x320) も選択可 |
@@ -211,7 +214,9 @@ PNGとして保存され、使用したプロンプト・翻訳後プロンプ�
 - **日本語プロンプトの翻訳でエラーになる / `sentencepiece` 関連のエラーが出る**: 翻訳モデルのトークナイザに `sentencepiece` が必要です。`pip install -r requirements.txt` を再実行してください。初回は翻訳モデル（`Helsinki-NLP/opus-mt-ja-en`、数百MB）のダウンロードも発生するため、インターネット接続も確認してください。
 - **日本語プロンプトの翻訳結果が不自然/意図と違う**: 機械翻訳のため、特に固有名詞・擬音語・口語表現などはうまく訳せないことがあります。生成結果の下のログ欄に「翻訳後プロンプト」として実際に使われた英語が表示されるので、意図と違う場合はプロンプトの言い回しを変えるか、該当部分だけ英語で直接入力してください。
 - **キャラクター一貫生成で、参照画像と全然似ていない/別人になってしまう**: 「キャラクター再現の強さ」を上げてください（目安: 0.7〜1.0）。上げすぎるとポーズ指定が効きにくくなるため、ポーズが反映されない場合は逆に下げて調整してください。この機能は学習（LoRA等）を行わない簡易的な仕組みのため、完全な同一キャラクター再現は保証されません。
-- **キャラクター一貫生成でIP-Adapter関連のエラーが出る**: 初回実行時にIP-Adapterの重みファイル（[h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter)、数百MB）が自動ダウンロードされます。インターネット接続を確認し、再実行してください。それでも解決しない場合は `pip install -r requirements.txt` を再実行し、`diffusers`・`transformers` が最新化されているか確認してください。
+- **キャラクター一貫生成で「参照画像から顔を検出できませんでした」と出る**: 顔が小さすぎる、横顔すぎる、イラストすぎる（顔検出モデルは実写の顔を想定）などが原因で起こりやすいです。顔がはっきり正面付近を向いて大きく写っている画像に差し替えてください。
+- **キャラクター一貫生成で `insightface` のインストールに失敗する / `ModuleNotFoundError: No module named 'insightface'`**: `insightface` はビルド済みパッケージ(wheel)が提供されていないPython/OSの組み合わせだと、`pip install -r requirements.txt` の時点でエラーになることがあります。特にPython 3.13/3.14のような非常に新しいバージョンでは対応ビルドがまだ無い場合があるため、その場合はPython 3.11または3.12で仮想環境を作り直してください（例: `python3.12 -m venv .venv`）。
+- **キャラクター一貫生成でIP-Adapter FaceID関連のエラーが出る**: 初回実行時に顔検出モデル（`buffalo_l`、約300MB、`~/.insightface`に保存）とIP-Adapter FaceIDの重み（[h94/IP-Adapter-FaceID](https://huggingface.co/h94/IP-Adapter-FaceID)、数百MB）が自動ダウンロードされます。インターネット接続を確認し、再実行してください。それでも解決しない場合は `pip install -r requirements.txt` を再実行し、`diffusers`・`transformers`・`insightface` が導入されているか確認してください。
 
 ## ディレクトリ構成
 
@@ -225,7 +230,7 @@ AIGen/
 │   ├── utils.py               # デバイス判定・メモリ最適化・共通処理
 │   ├── t2i.py                  # T2I (Text-to-Image) パイプライン
 │   ├── object_gen.py            # オブジェクト生成用プロンプト・背景透過処理
-│   ├── character.py              # キャラクター一貫生成 (IP-Adapter) パイプライン
+│   ├── character.py              # キャラクター一貫生成 (IP-Adapter FaceID) パイプライン
 │   ├── translate.py              # 日本語プロンプトの自動英訳
 │   ├── history.py                 # 生成履歴の保存・読み込み
 │   ├── style_transfer.py          # 画像スタイル変換 (img2img) パイプライン
